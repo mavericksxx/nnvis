@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Agent Evolution Theater</title>
+    <style>
+        body {
+            background: #000000;
+            color: #ffffff;
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+        
+        .spectator-container {
+            display: flex;
+            gap: 20px;
+            padding: 20px;
+            height: calc(100vh - 40px);
+            box-sizing: border-box;
+        }
+        
+        .network-visualization {
+            flex: 2;
+            border: 2px solid #ffffff;
+            border-radius: 8px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .leaderboard {
+            flex: 1;
+            border: 2px solid #ffffff;
+            border-radius: 8px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.5);
+            overflow-y: auto;
+            max-height: 100%;
+        }
+        
+        .neuron {
+            fill: none;
+            stroke: #ffffff;
+            stroke-width: 2;
+        }
+        
+        .neuron-inner {
+            transition: fill 0.3s ease;
+        }
+        
+        .neuron-activation {
+            fill: #ffffff;
+        }
+        
+        .connection {
+            stroke-width: 1.5;
+            transition: stroke 0.3s ease;
+        }
+        
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .legend-box {
+            width: 10px;
+            height: 10px;
+        }
+        
+        .legend-text {
+            color: #ffffff;
+            font-size: 14px;
+        }
+
+        #debug-info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: #666;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="spectator-container">
+        <div class="network-visualization">
+            <svg id="network-svg" width="900" height="600"></svg>
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #ff0000;"></div>
+                    <span class="legend-text">-ve</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-box" style="background: #ffffff;"></div>
+                    <span class="legend-text">+ve</span>
+                </div>
+            </div>
+            <div id="debug-info"></div>
+        </div>
+        
+        <div class="leaderboard">
+            <h2>Top Performers</h2>
+            <div id="leaderboard-content"></div>
+        </div>
+    </div>
+    
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        function getActivationColor(activation) {
+            if (activation === undefined) return '#000000';
+            // Red for negative, white for positive values
+            return activation < 0 ? 
+                d3.rgb(255, 0, 0, Math.abs(activation)) : 
+                d3.rgb(255, 255, 255, Math.abs(activation));
+        }
+
+        function visualizeNetwork(network) {
+            const svg = d3.select('#network-svg');
+            const width = svg.node().getBoundingClientRect().width;
+            const height = svg.node().getBoundingClientRect().height;
+            
+            // Clear previous visualization
+            svg.selectAll('*').remove();
+            
+            // Center the visualization but shift left to make room for output text
+            const g = svg.append('g')
+                .attr('transform', `translate(${(width/2) - 50}, ${height/2})`);
+            
+            // Calculate layout
+            const layerWidth = width * 0.8;
+            const layerHeight = height * 0.8;
+            
+            // Draw connections
+            network.connections.forEach(conn => {
+                const color = conn.weight < 0 ? 
+                    d3.rgb(255, 0, 0, Math.abs(conn.weight)) : 
+                    d3.rgb(255, 255, 255, Math.abs(conn.weight));
+                
+                g.append('line')
+                    .attr('class', 'connection')
+                    .attr('x1', conn.source.x - layerWidth/2)
+                    .attr('y1', conn.source.y - layerHeight/2)
+                    .attr('x2', conn.target.x - layerWidth/2)
+                    .attr('y2', conn.target.y - layerHeight/2)
+                    .style('stroke', color);
+            });
+            
+            // Draw neurons
+            network.neurons.forEach(neuron => {
+                const g_neuron = g.append('g')
+                    .attr('transform', `translate(${neuron.x - layerWidth/2}, ${neuron.y - layerHeight/2})`);
+                
+                // Outer circle (white border)
+                g_neuron.append('circle')
+                    .attr('class', 'neuron')
+                    .attr('r', 10);
+                
+                // Inner circle (colored by activation)
+                g_neuron.append('circle')
+                    .attr('class', 'neuron-inner')
+                    .attr('r', 8)
+                    .style('fill', getActivationColor(neuron.activation));
+                
+                // Add activation value text with adjusted positioning
+                if (neuron.activation !== undefined) {
+                    const isOutputLayer = neuron.layer_index === network.neurons[network.neurons.length - 1].layer_index;
+                    g_neuron.append('text')
+                        .attr('x', isOutputLayer ? 25 : (neuron.x < 0 ? -42 : 14))
+                        .attr('y', 4)
+                        .attr('fill', '#ffffff')
+                        .style('font-size', '16px')
+                        .text(neuron.activation.toFixed(2));
+                }
+            });
+        }
+        
+        // Update leaderboard
+        function updateLeaderboard(leaders) {
+            console.log('Updating leaderboard:', leaders);  // Debug log
+            
+            const leaderboard = document.getElementById('leaderboard-content');
+            leaderboard.innerHTML = '';
+            
+            leaders.forEach((agent, index) => {
+                const entry = document.createElement('div');
+                entry.style.display = 'flex';
+                entry.style.alignItems = 'center';
+                entry.style.marginBottom = '10px';
+                entry.style.padding = '10px';
+                entry.style.background = '#222';
+                entry.style.borderRadius = '5px';
+                
+                const avatar = document.createElement('div');
+                avatar.className = 'avatar';
+                
+                const info = document.createElement('div');
+                info.textContent = `#${index + 1} - Score: ${agent.score.toFixed(3)}`;
+                info.style.color = '#fff';
+                
+                entry.appendChild(avatar);
+                entry.appendChild(info);
+                leaderboard.appendChild(entry);
+            });
+        }
+        
+        // Fetch updates every second
+        setInterval(function() {
+            fetch('/spectator-data')
+                .then(response => {
+                    console.log('Raw response:', response);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Parsed data:', data);
+                    if (data.error) {
+                        console.error('Server error:', data.error);
+                        document.getElementById('debug-info').textContent = 
+                            `Server error: ${data.error}`;
+                        return;
+                    }
+                    
+                    if (!data.network || !data.network.neurons || !data.network.connections) {
+                        console.error('Invalid network data:', data);
+                        document.getElementById('debug-info').textContent = 
+                            'Invalid network data received';
+                        return;
+                    }
+                    
+                    document.getElementById('debug-info').textContent = 
+                        `Generation: ${data.leaderboard[0].generation}, ` +
+                        `Neurons: ${data.network.neurons.length}, ` +
+                        `Connections: ${data.network.connections.length}`;
+                    
+                    visualizeNetwork(data.network);
+                    updateLeaderboard(data.leaderboard);
+                })
+                .catch(error => {
+                    console.error('Fetch error:', error);
+                    document.getElementById('debug-info').textContent = 
+                        `Error: ${error.message}`;
+                });
+        }, 1000);
+    </script>
+</body>
+</html> 
