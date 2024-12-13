@@ -1,5 +1,5 @@
 from flask import Flask, render_template, jsonify
-from detection import EvolutionSimulation
+from src.detection import EvolutionSimulation
 import threading
 import time
 import logging

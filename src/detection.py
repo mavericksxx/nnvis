@@ -1,5 +1,5 @@
 import numpy as np
-from ui import SpectatorMode
+from .ui import SpectatorMode
 
 class NeuralNetwork:
     def __init__(self, layer_sizes):
